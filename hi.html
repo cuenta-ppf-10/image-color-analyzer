@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Color Analyzer</title>
+    <style>
+        /* General page style */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #2E2E2E;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 1200px;
+            align-items: center;
+        }
+
+        /* Main title */
+        .main-title {
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        /* Subtitle */
+        .sub-title {
+            font-size: 20px;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        /* Image preview */
+        .image-preview-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1000px;
+            margin-bottom: 20px;
+        }
+
+        .image-preview {
+            flex: 2;
+            margin-right: 20px;
+            border: 2px solid #555;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        .image-preview input[type="file"] {
+            padding: 10px;
+            background-color: #444;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        /* Color breakdown area */
+        .color-breakdown {
+            flex: 1;
+            background: #1E1E1E;
+            padding: 20px;
+            border-radius: 10px;
+            height: 400px;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+
+        .color-box {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 5px;
+            background-color: #444;
+            border-radius: 5px;
+        }
+
+        .color-swatch {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            border-radius: 3px;
+        }
+
+        .color-text {
+            font-size: 14px;
+            color: #ddd;
+        }
+
+        .no-colors {
+            text-align: center;
+            color: #aaa;
+            font-size: 18px;
+        }
+
+        .image-size {
+            color: white;
+            margin-top: 10px;
+        }
+
+        /* Total pixels */
+        .total-pixels {
+            color: white;
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Title and subtitle -->
+        <h1 class="main-title">ColorSpector</h1>
+        <p class="sub-title">Made by Pixelarg (Bauti)</p>
+
+        <!-- Image preview and selector -->
+        <div class="image-preview-container">
+            <div class="image-preview">
+                <input type="file" id="imageInput" accept="image/*">
+                <canvas id="canvas" style="display:none;"></canvas>
+                <div id="imagePreviewContainer"></div>
+                <p id="imageSize" class="image-size"></p>
+            </div>
+
+            <!-- Color breakdown -->
+            <div class="color-breakdown" id="colorList">
+                <p class="no-colors">Please select an image to analyze the colors.</p>
+            </div>
+        </div>
+
+        <!-- Total pixels -->
+        <p id="totalPixels" class="total-pixels"></p>
+    </div>
+
+    <script>
+        document.getElementById("imageInput").addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+            const colorList = document.getElementById("colorList");
+            const imagePreviewContainer = document.getElementById("imagePreviewContainer");
+            const imageSizeElement = document.getElementById("imageSize");
+            const totalPixelsElement = document.getElementById("totalPixels");
+
+            const img = new Image();
+            img.onload = function() {
+                // Set canvas size according to image
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                // Show image preview
+                imagePreviewContainer.innerHTML = "";
+                imagePreviewContainer.appendChild(img);
+
+                // Show image size
+                imageSizeElement.textContent = `Size: ${img.width} x ${img.height} px`;
+
+                // Get pixel data
+                const pixelData = ctx.getImageData(0, 0, img.width, img.height).data;
+                const colorCounts = {};
+
+                // Count pixel colors
+                let totalPixels = 0; // Variable to count total pixels
+                for (let i = 0; i < pixelData.length; i += 4) {
+                    const r = pixelData[i];
+                    const g = pixelData[i + 1];
+                    const b = pixelData[i + 2];
+                    const a = pixelData[i + 3];
+
+                    if (a === 0) continue; // Skip transparent pixels
+                    const colorKey = `${r},${g},${b}`;
+
+                    if (colorCounts[colorKey]) {
+                        colorCounts[colorKey]++;
+                    } else {
+                        colorCounts[colorKey] = 1;
+                    }
+
+                    totalPixels++; // Increment the total pixel count
+                }
+
+                // Display results in the interface
+                colorList.innerHTML = ""; // Clear any previous messages
+                if (Object.keys(colorCounts).length === 0) {
+                    colorList.innerHTML = "<p class='no-colors'>No colors found.</p>";
+                } else {
+                    for (const [color, count] of Object.entries(colorCounts)) {
+                        const colorBox = document.createElement("div");
+                        colorBox.classList.add("color-box");
+
+                        const colorSwatch = document.createElement("div");
+                        colorSwatch.classList.add("color-swatch");
+                        colorSwatch.style.backgroundColor = `rgb(${color})`;
+
+                        const colorText = document.createElement("span");
+                        colorText.classList.add("color-text");
+                        colorText.textContent = `${count} pixels`;
+
+                        colorBox.appendChild(colorSwatch);
+                        colorBox.appendChild(colorText);
+                        colorList.appendChild(colorBox);
+                    }
+                }
+
+                // Display total pixels
+                totalPixelsElement.textContent = `Total pixels: ${totalPixels}`;
+            };
+
+            img.src = URL.createObjectURL(file);
+        });
+    </script>
+</body>
+</html>
