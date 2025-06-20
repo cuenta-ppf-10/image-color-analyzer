@@ -1,1 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ColorSpector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at center, rgba(74,71,84,1) 0%, rgba(0,0,0,1) 70%);
+      color: white;
+      margin: 0;
+    }
+    #imagePreviewContainer {
+      overflow: hidden;
+      position: relative;
+      border-radius: 10px;
+      border: 2px solid #666;
+      width: 100%;
+      max-width: 400px;
+      height: 256px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #222;
+    }
+    #zoomedImage {
+      max-width: 100%;
+      max-height: 100%;
+      transform-origin: center;
+      cursor: grab;
+      user-select: none;
+      display: none;
+      transition: transform 0.2s ease;
+    }
+    .zoom-button {
+      background: rgba(255,255,255,0.1);
+      padding: 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid #aaa;
+      transition: background-color 0.2s;
+    }
+    .zoom-button:hover {
+      background: rgba(255,255,255,0.25);
+    }
+    #chartCanvas {
+      margin: 40px auto 0 auto !important;
+      display: block;
+      max-width: 90vw;
+      background-color: transparent !important;
+      border-radius: 10px;
+      max-height: 600px;
+      height: auto;
+      width: 100% !important;
+      aspect-ratio: 1 / 1;
+    }
+    .color-box {
+      display: flex;
+      align-items: center;
+      margin: 8px 0;
+      padding: 6px;
+      background-color: #444;
+      border-radius: 6px;
+    }
+    .color-swatch {
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .color-label {
+      font-size: 14px;
+      color: #ddd;
+    }
+    .fade-in {
+      opacity: 0;
+      transform: translateY(50px);
+      transition: opacity 1s ease-out, transform 1s ease-out;
+    }
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-radial-gradient text-white font-sans p-4">
+  <div class="container mx-auto px-4 max-w-xl">
+    <h1 class="text-6xl font-bold text-center mb-2">ColorSpector</h1>
+    <p class="text-center text-lg mb-6">Made by Pixelarg (Bauti)</p>
+
+    <div class="flex flex-col items-center mb-6">
+      <input type="file" id="imageInput" accept="image/*" class="mb-4" />
+
+      <div id="imagePreviewContainer">
+        <p id="placeholderText" class="text-gray-400 text-center px-4">
+          Please select an image to analyze the colors.
+        </p>
+        <img id="zoomedImage" alt="Uploaded image" />
+      </div>
+
+      <div class="flex gap-4 mt-4">
+        <button id="zoomIn" class="zoom-button" aria-label="Zoom In">
+          <img src="logos/zoom-in.png" alt="Zoom In" width="24" height="24" />
+        </button>
+        <button id="zoomOut" class="zoom-button" aria-label="Zoom Out">
+          <img src="logos/zoom-out.png" alt="Zoom Out" width="24" height="24" />
+        </button>
+      </div>
+    </div>
+
+    <p id="imageSize" class="mt-4 text-center"></p>
+    <p id="totalPixels" class="font-semibold mt-2 text-center"></p>
+
+    <div id="colorList" class="mt-6"></div>
+
+    <canvas
+      id="chartCanvas"
+      class="fade-in"
+      aria-label="Color distribution chart"
+      role="img"
+    ></canvas>
+
+    <button
+      id="exportCSV"
+      class="mt-6 mb-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded block mx-auto"
+      style="display:none;"
+    >
+      Export to CSV
+    </button>
+  </div>
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const zoomedImage = document.getElementById('zoomedImage');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const colorList = document.getElementById('colorList');
+    const imageSize = document.getElementById('imageSize');
+    const totalPixels = document.getElementById('totalPixels');
+    const placeholderText = document.getElementById('placeholderText');
+    const exportCSVBtn = document.getElementById('exportCSV');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    let zoom = 1;
+    let chart;
+
+    let isDragging = false;
+    let originX = 0;
+    let originY = 0;
+    let lastX = 0;
+    let lastY = 0;
+
+    zoomedImage.addEventListener('mousedown', e => {
+      if (zoom <= 1) return;
+      isDragging = true;
+      originX = e.clientX - lastX;
+      originY = e.clientY - lastY;
+      zoomedImage.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+      zoomedImage.style.cursor = 'grab';
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      lastX = e.clientX - originX;
+      lastY = e.clientY - originY;
+      zoomedImage.style.transform = `scale(${zoom}) translate(${lastX / zoom}px, ${lastY / zoom}px)`;
+    });
+
+    zoomInBtn.onclick = () => {
+      zoom = Math.min(zoom * 1.2, 5);
+      zoomedImage.style.transform = `scale(${zoom}) translate(${lastX / zoom}px, ${lastY / zoom}px)`;
+      zoomedImage.style.cursor = zoom > 1 ? 'grab' : 'default';
+    };
+
+    zoomOutBtn.onclick = () => {
+      zoom = Math.max(zoom / 1.2, 1);
+      if (zoom <= 1) {
+        lastX = 0;
+        lastY = 0;
+        zoomedImage.style.cursor = 'default';
+      } else {
+        zoomedImage.style.cursor = 'grab';
+      }
+      zoomedImage.style.transform = `scale(${zoom}) translate(${lastX / zoom}px, ${lastY / zoom}px)`;
+    };
+
+    function fadeInOnScroll() {
+      const fadeEl = document.querySelector('.fade-in');
+      if (!fadeEl) return;
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      });
+      observer.observe(fadeEl);
+    }
+
+    imageInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        zoom = 1;
+        lastX = 0;
+        lastY = 0;
+        zoomedImage.style.transform = 'scale(1) translate(0, 0)';
+        zoomedImage.src = e.target.result;
+        zoomedImage.style.display = 'block';
+        placeholderText.style.display = 'none';
+
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+
+          imageSize.textContent = `Size: ${img.width} x ${img.height}`;
+
+          const pixelData = ctx.getImageData(0, 0, img.width, img.height).data;
+          const colorCounts = {};
+          let total = 0;
+
+          for (let i = 0; i < pixelData.length; i += 4) {
+            const r = pixelData[i];
+            const g = pixelData[i + 1];
+            const b = pixelData[i + 2];
+            const a = pixelData[i + 3];
+            if (a === 0) continue;
+            const key = `${r},${g},${b}`;
+            colorCounts[key] = (colorCounts[key] || 0) + 1;
+            total++;
+          }
+
+          totalPixels.textContent = `Total pixels: ${total}`;
+
+          const sorted = Object.entries(colorCounts).sort((a, b) => b[1] - a[1]);
+
+          colorList.innerHTML = '';
+          const labels = [];
+          const data = [];
+          const bgColors = [];
+
+          for (const [color, count] of sorted.slice(0, 20)) {
+            const colorBox = document.createElement('div');
+            colorBox.className = 'color-box';
+            const swatch = document.createElement('div');
+            swatch.className = 'color-swatch';
+            swatch.style.backgroundColor = `rgb(${color})`;
+            const label = document.createElement('span');
+            label.className = 'color-label';
+            label.textContent = `${count} px`;
+            colorBox.appendChild(swatch);
+            colorBox.appendChild(label);
+            colorList.appendChild(colorBox);
+
+            labels.push(`rgb(${color})`);
+            data.push(count);
+            bgColors.push(`rgb(${color})`);
+          }
+
+          const ctxChart = document.getElementById('chartCanvas').getContext('2d');
+          if (chart) chart.destroy();
+          chart = new Chart(ctxChart, {
+            type: 'doughnut',
+            data: {
+              labels,
+              datasets: [
+                {
+                  data,
+                  backgroundColor: bgColors,
+                  borderWidth: 1,
+                  borderColor: '#222',
+                },
+              ],
+            },
+            options: {
+              plugins: {
+                legend: { display: false },
+              },
+              responsive: true,
+              maintainAspectRatio: true,
+              animation: {
+                duration: 800,
+              },
+              cutout: '60%',
+            },
+          });
+
+          exportCSVBtn.style.display = 'block';
+          const chartCanvas = document.getElementById('chartCanvas');
+          chartCanvas.classList.add('fade-in');
+          setTimeout(() => {
+            chartCanvas.classList.add('visible');
+          }, 100);
+
+          setTimeout(() => {
+            chartCanvas.scrollIntoView({ behavior: 'smooth' });
+          }, 300);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    exportCSVBtn.onclick = () => {
+      let csv = 'Color,Count\n';
+      const boxes = document.querySelectorAll('.color-box');
+      boxes.forEach(box => {
+        const rgb = box.querySelector('.color-swatch').style.backgroundColor;
+        const text = box.querySelector('.color-label').textContent;
+        csv += `${rgb},${text.replace(' px', '')}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'colors.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    fadeInOnScroll();
+  </script>
+</body>
+</html>
 
